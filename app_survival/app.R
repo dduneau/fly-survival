@@ -409,6 +409,8 @@ server <- function(input, output, session) {
     if (!nrow(dat())) return(list(problems = "The filter keeps no row: choose the values to keep.", warnings = character(0)))
     ch <- check_data(dat(), s$time, s$event, s$group, s$ref, s$stratum, s$box)
     if (s$model == "coxme" && !nzchar(s$box)) ch$problems <- c(ch$problems, "The mixed model needs a box column.")
+    if (nzchar(s$split) && s$split == s$group)
+      ch$problems <- c(ch$problems, sprintf("%s is chosen both to compare and to analyse separately: each analysis would then hold a single group. Set \"Analyse separately for each\" to (none), or to another column.", s$group))
     if (nzchar(s$ref) && nzchar(s$group) && !s$ref %in% as.character(dat()[[s$group]])) ch$problems <- c(ch$problems, "Choose a reference group.")
     ch
   })
