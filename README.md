@@ -43,20 +43,21 @@ The app checks the data first. It stops when a time is not a number, an event is
 ## Repository layout and updating
 
 ```
-app/      the app: app.R and the two example data sets (edit here)
-docs/     the published site, made by shinylive from app/ (do not edit)
+app_survival/   the app: app.R and the two example data sets (edit here)
+docs/           the published site, made by shinylive from app_survival/ (do not edit)
 ```
 
-To update the app, edit `app/app.R`, then in R, from the repository folder:
+To update the app, edit `app_survival/app.R`, then in R, from the repository folder:
 
 ```r
-shinylive::export("app", "docs")
+shinylive::export("app_survival", "docs")
+file.create("docs/.nojekyll")
 httpuv::runStaticServer("docs")   # check it locally
 ```
 
-Keep the empty file `docs/.nojekyll`, then commit and push. GitHub Pages serves `docs/` from the `main` branch.
+The empty file `docs/.nojekyll` lets GitHub Pages serve all of shinylive's files. Then commit and push. GitHub Pages serves `docs/` from the `main` branch.
 
-To run the app in R instead: `shiny::runApp("app")`.
+To run the app in R instead: `shiny::runApp("app_survival")`.
 
 ## Citation
 
