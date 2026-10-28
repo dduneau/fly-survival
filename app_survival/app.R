@@ -9,8 +9,9 @@ library(survival)
 library(ggplot2)
 library(patchwork)
 
-if (FALSE) library(coxme)   # declares coxme to shinylive, which bundles the packages it finds in library() calls
+if (FALSE) { library(coxme); library(svglite) }   # declares them to shinylive, which bundles the packages it finds in library() calls
 has_coxme <- requireNamespace("coxme", quietly = TRUE)
+has_svglite <- requireNamespace("svglite", quietly = TRUE)
 APP_VERSION <- "1.0"
 `%||%` <- function(a, b) if (is.null(a)) b else a
 EXAMPLES <- c(real = "survival_CS_Prett.csv",            # Canton-S males and females, real data
@@ -326,7 +327,8 @@ ui <- page_sidebar(
   navset_card_underline(
     nav_panel("Plots",
       plotOutput("plots", height = "430px"),
-      div(downloadButton("dl_pdf", "PDF"), downloadButton("dl_png", "PNG"))),
+      div(downloadButton("dl_pdf", "PDF"), downloadButton("dl_png", "PNG"),
+          if (has_svglite) downloadButton("dl_svg", "SVG"))),
     nav_panel("Results",
       h6("Hazard ratios"), tableOutput("hr_table"),
       h6("Likelihood ratio test"), tableOutput("lrt_table"),
@@ -470,6 +472,7 @@ server <- function(input, output, session) {
   output$preview <- renderTable(head(dat(), 20))
 
   output$dl_pdf <- downloadHandler("survival_plots.pdf", function(f) ggsave(f, both_plots(), width = 9, height = 4.5))
+  output$dl_svg <- downloadHandler("survival_plots.svg", function(f) ggsave(f, both_plots(), width = 9, height = 4.5, device = svglite::svglite))
   output$dl_png <- downloadHandler("survival_plots.png", function(f) ggsave(f, both_plots(), width = 9, height = 4.5, dpi = 300))
   output$dl_results <- downloadHandler("survival_results.csv", function(f) write.table(hr_tab(), f, sep = ";", row.names = FALSE))
   output$dl_methods <- downloadHandler("survival_methods.txt", function(f) writeLines(methods(), f))
