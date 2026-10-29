@@ -9,7 +9,7 @@ library(survival)
 library(ggplot2)
 library(patchwork)
 
-if (FALSE) { library(coxme); library(svglite) }   # declares them to shinylive, which bundles the packages it finds in library() calls
+if (FALSE) { library(coxme); library(svglite); library(jsonlite) }   # declares them to shinylive, which bundles the packages it finds in library() calls
 has_coxme <- requireNamespace("coxme", quietly = TRUE)
 has_svglite <- requireNamespace("svglite", quietly = TRUE)
 APP_VERSION <- "1.0"
@@ -291,9 +291,29 @@ cox.zph(coxph(Surv(time, event) ~ group', st, ', data = d))
 ')
 }
 
+# ------------------------------------------------------------------ downloads
+# Files are made in R and handed to the browser as a data URL. Shiny's downloadHandler is not used:
+# under shinylive it depends on the service worker, and fails (a 404 page saved as .html) whenever the
+# worker is not active, for example after a hard reload.
+dl_button <- function(id, label) actionButton(id, label, icon = icon("download"), class = "btn-outline-secondary btn-sm me-1")
+DL_JS <- "
+Shiny.addCustomMessageHandler('send-file', function(m) {
+  var a = document.createElement('a');
+  a.href = 'data:' + m.mime + ';base64,' + m.data;
+  a.download = m.name;
+  document.body.appendChild(a); a.click(); a.remove();
+});"
+send_file <- function(session, name, mime, write_fun) {
+  f <- tempfile(fileext = paste0(".", tools::file_ext(name)))
+  write_fun(f)
+  data <- jsonlite::base64_enc(readBin(f, "raw", file.info(f)$size))
+  session$sendCustomMessage("send-file", list(name = name, mime = mime, data = gsub("\n", "", data)))
+}
+
 # ------------------------------------------------------------------ UI
 ui <- page_sidebar(
   title = "Survival after infection",
+  tags$head(tags$script(HTML(DL_JS))),
   sidebar = sidebar(width = 330,
     h6("1. Data"),
     fileInput("file", NULL, accept = c(".csv", ".txt", ".tsv"), placeholder = "One row per fly"),
@@ -327,8 +347,8 @@ ui <- page_sidebar(
   navset_card_underline(
     nav_panel("Plots",
       plotOutput("plots", height = "430px"),
-      div(downloadButton("dl_pdf", "PDF"), downloadButton("dl_png", "PNG"),
-          if (has_svglite) downloadButton("dl_svg", "SVG"))),
+      div(dl_button("dl_pdf", "PDF"), dl_button("dl_png", "PNG"),
+          if (has_svglite) dl_button("dl_svg", "SVG"))),
     nav_panel("Results",
       h6("Hazard ratios"), tableOutput("hr_table"),
       h6("Likelihood ratio test"), tableOutput("lrt_table"),
@@ -337,9 +357,9 @@ ui <- page_sidebar(
       p(class = "text-muted small",
         "A non-significant test is weak evidence when deaths fall on a few scorings, as with daily scoring.",
         "What matters in practice is whether the survival curves cross."),
-      downloadButton("dl_results", "Results (CSV)")),
-    nav_panel("Methods text", verbatimTextOutput("methods"), downloadButton("dl_methods", "Text")),
-    nav_panel("R code", verbatimTextOutput("rcode"), downloadButton("dl_code", "R script")),
+      dl_button("dl_results", "Results (CSV)")),
+    nav_panel("Methods text", verbatimTextOutput("methods"), dl_button("dl_methods", "Text")),
+    nav_panel("R code", verbatimTextOutput("rcode"), dl_button("dl_code", "R script")),
     nav_panel("Data", tableOutput("preview"))
   )
 )
@@ -471,12 +491,18 @@ server <- function(input, output, session) {
   output$rcode <- renderText(code())
   output$preview <- renderTable(head(dat(), 20))
 
-  output$dl_pdf <- downloadHandler("survival_plots.pdf", function(f) ggsave(f, both_plots(), width = 9, height = 4.5))
-  output$dl_svg <- downloadHandler("survival_plots.svg", function(f) ggsave(f, both_plots(), width = 9, height = 4.5, device = svglite::svglite))
-  output$dl_png <- downloadHandler("survival_plots.png", function(f) ggsave(f, both_plots(), width = 9, height = 4.5, dpi = 300))
-  output$dl_results <- downloadHandler("survival_results.csv", function(f) write.table(hr_tab(), f, sep = ";", row.names = FALSE))
-  output$dl_methods <- downloadHandler("survival_methods.txt", function(f) writeLines(methods(), f))
-  output$dl_code <- downloadHandler("survival_analysis.R", function(f) writeLines(code(), f))
+  observeEvent(input$dl_pdf, send_file(session, "survival_plots.pdf", "application/pdf",
+    function(f) ggsave(f, both_plots(), width = 9, height = 4.5)))
+  observeEvent(input$dl_png, send_file(session, "survival_plots.png", "image/png",
+    function(f) ggsave(f, both_plots(), width = 9, height = 4.5, dpi = 300)))
+  observeEvent(input$dl_svg, send_file(session, "survival_plots.svg", "image/svg+xml",
+    function(f) ggsave(f, both_plots(), width = 9, height = 4.5, device = svglite::svglite)))
+  observeEvent(input$dl_results, send_file(session, "survival_results.csv", "text/csv",
+    function(f) write.table(hr_tab(), f, sep = ";", row.names = FALSE)))
+  observeEvent(input$dl_methods, send_file(session, "survival_methods.txt", "text/plain",
+    function(f) writeLines(methods(), f)))
+  observeEvent(input$dl_code, send_file(session, "survival_analysis.R", "text/plain",
+    function(f) writeLines(code(), f)))
 }
 
 shinyApp(ui, server)
