@@ -25,7 +25,7 @@ A table with **one row per fly**, separated by commas, semicolons or tabs. Colum
 ## Using the app
 
 1. **Data.** Load a file, or try one of the examples. **Keep only rows where** restricts the analysis to some values of a column (for example some genotypes), without editing the file.
-2. **Columns.** Choose the time, the event, and the factor to **compare** (for example `Sex`), with its **reference group**: hazard ratios are given relative to it. **Analyse separately for each** runs the same analysis for each level of another column (for example each `Genotype`), with one panel per level. Choose the **day of injection** (stratum) and the **box**.
+2. **Columns.** Choose the time, the event, and the factor to **compare** (for example `Sex`), with its **reference group**: hazard ratios are given relative to it. The app asks for it rather than choosing: take the least susceptible group, the one that survives best, so that hazard ratios are above one (the mortality of each group is shown under the menu). **Analyse separately for each** runs the same analysis for each level of another column (for example each `Genotype`), with one panel per level. Choose the **day of injection** (stratum) and the **box**.
 3. **Model.**
    - *Cox model with stratum (coxph)*: each day of injection has its own baseline hazard.
    - *Mixed Cox model (coxme)*: the box is also a random effect, as in the protocol. When each day holds a single box, box and day cannot be separated, and the app says so: use the first model.
@@ -35,7 +35,7 @@ The app checks the data first. It stops when a time is not a number, an event is
 
 ## What it gives
 
-- **Plots**: the proportion of survivors at each scoring, joined by straight lines, and the log hazard ratio of each group with its 95% CI and the numbers of flies and boxes. PDF or PNG.
+- **Plots**: the proportion of survivors at each scoring, joined by straight lines, and the log hazard ratio of each group with its 95% CI and the numbers of flies and boxes. PDF, PNG or SVG (SVG keeps the text editable, in Inkscape, Illustrator or PowerPoint).
 - **Results**: hazard ratios with 95% CI (Wald, on the log scale), the likelihood ratio test against the model without the comparison, the box SD of the mixed model, flies and deaths per group, and `cox.zph` on the fixed-effects fit, with time scaled by survival (the default) and as recorded. A non-significant `cox.zph` is weak evidence when deaths fall on a few scorings; what matters is whether the curves cross.
 - **Methods text**: a paragraph with the model, the window, the filter and the results.
 - **R code**: the same analysis as a script, with the settings chosen, to rerun or extend it in R.

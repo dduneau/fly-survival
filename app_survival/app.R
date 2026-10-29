@@ -17,6 +17,16 @@ APP_VERSION <- "1.0"
 EXAMPLES <- c(real = "survival_CS_Prett.csv",            # Canton-S males and females, real data
               sim  = "simulated_survival_3lines.csv")    # 3 lines, 6 boxes per day, simulated
 PALETTE <- c("#1f5fbf", "#e8850c", "#2a9d6f", "#c0398a", "#7a5cc4", "#8c6d1f", "#3a3a3a", "#d1453b")
+# Female orange and male blue in every app of the protocol, whatever the order; other groups take the palette in order
+group_colours <- function(lv) {
+  cols <- setNames(rep(NA_character_, length(lv)), lv)
+  low <- tolower(lv)
+  cols[low %in% c("female", "females", "f")] <- "#e8850c"
+  cols[low %in% c("male", "males", "m")] <- "#1f5fbf"
+  free <- setdiff(PALETTE, cols)
+  cols[is.na(cols)] <- rep(free, length.out = sum(is.na(cols)))
+  cols
+}
 
 # ------------------------------------------------------------------ reading
 read_any <- function(path) {
@@ -176,7 +186,7 @@ plot_survival <- function(res, s) {
   pts <- do.call(rbind, lapply(res, function(r) { p <- surv_points(r$data); p$Panel <- r$name; p }))
   lv <- unique(unlist(lapply(res, function(r) levels(r$data$.group))))
   pts$Group <- factor(pts$Group, levels = lv)
-  cols <- setNames(rep(PALETTE, length.out = length(lv)), lv)
+  cols <- group_colours(lv)
   p <- ggplot(pts, aes(Time, Survival, colour = Group))
   if (is.finite(s$window) && s$window < max(pts$Time))
     p <- p + annotate("rect", xmin = 0, xmax = s$window, ymin = 0, ymax = 1, fill = grey(0.92))
@@ -201,7 +211,7 @@ plot_hr <- function(res, s) {
   if (is.null(rows) || !nrow(rows)) return(NULL)
   lv <- unique(unlist(lapply(res, function(r) levels(r$data$.group))))
   rows$Group <- factor(rows$Group, levels = lv)
-  cols <- setNames(rep(PALETTE, length.out = length(lv)), lv)
+  cols <- group_colours(lv)
   lo <- min(rows$lower, 0, na.rm = TRUE); hi <- max(rows$upper, 0, na.rm = TRUE)
   ylab_y <- lo - 0.15 * (hi - lo + 0.1)
   win <- if (is.finite(s$window)) paste0(", up to ", s$window, " ", s$unit) else ""
@@ -329,7 +339,10 @@ ui <- page_sidebar(
     selectInput("time", "Time of death or censoring", NULL),
     selectInput("event", "Event (1 = died, 0 = censored)", NULL),
     selectInput("group", "Compare (fixed effect)", NULL),
-    selectInput("ref", "Reference group", NULL),
+    selectInput("ref", "Reference group: the least susceptible", NULL),
+    div(class = "small text-muted", style = "margin-top:-0.6rem; margin-bottom:0.8rem",
+        "Take the group that survives best, so that hazard ratios are above one and read in one direction (see the protocol).",
+        textOutput("mortality", inline = TRUE)),
     selectInput("split", "Analyse separately for each (optional)", NULL),
     selectInput("stratum", "Day of injection (stratum, optional)", NULL),
     selectInput("box", "Box (random effect)", NULL),
@@ -404,8 +417,20 @@ server <- function(input, output, session) {
   observeEvent(list(dat(), input$group), {
     req(nzchar(input$group))
     lv <- sort(unique(as.character(dat()[[input$group]])))
-    sel <- if ("Male" %in% lv) "Male" else lv[1]
-    updateSelectInput(session, "ref", choices = lv, selected = sel)
+    cur <- isolate(input$ref)
+    updateSelectInput(session, "ref", choices = c("Choose the reference group" = "", lv),
+                      selected = if (!is.null(cur) && cur %in% lv) cur else "")
+  })
+  # mortality of each group over the analysed window, to help choose the reference
+  output$mortality <- renderText({
+    req(rv$d, nzchar(input$group), nzchar(input$time), nzchar(input$event))
+    d <- dat(); t <- suppressWarnings(as.numeric(d[[input$time]])); e <- suppressWarnings(as.numeric(d[[input$event]]))
+    w <- if (is.null(input$window) || is.na(input$window)) Inf else input$window
+    died <- e == 1 & t <= w
+    m <- tapply(died, as.character(d[[input$group]]), mean, na.rm = TRUE)
+    m <- sort(m)
+    paste0(" Mortality", if (is.finite(w)) paste0(" up to ", w, " ", input$unit) else "", ": ",
+           paste(sprintf("%s %.0f%%", names(m), 100 * m), collapse = ", "), ".")
   })
 
   output$data_info <- renderText({
@@ -434,18 +459,22 @@ server <- function(input, output, session) {
     if (nzchar(s$split) && s$split == s$group)
       ch$problems <- c(ch$problems, sprintf("%s is chosen both to compare and to analyse separately: each analysis would then hold a single group. Set \"Analyse separately for each\" to (none), or to another column.", s$group))
     if (nzchar(s$ref) && nzchar(s$group) && !s$ref %in% as.character(dat()[[s$group]])) ch$problems <- c(ch$problems, "Choose a reference group.")
+    ch$no_ref <- !nzchar(s$ref %||% "")
     ch
   })
 
   results <- reactive({
-    req(rv$d); ch <- checks(); req(!length(ch$problems))
+    req(rv$d); ch <- checks(); req(!length(ch$problems), !ch$no_ref)
     analyse(dat(), settings())
   })
 
   output$messages <- renderUI({
     if (is.null(rv$d)) return(div(class = "alert alert-info", "Load a file with one row per fly, or try one of the examples."))
     ch <- checks()
-    fit_err <- if (!length(ch$problems)) {
+    if (!length(ch$problems) && ch$no_ref)
+      return(div(class = "alert alert-info", strong("Choose the reference group."),
+                 " Take the least susceptible group, the one that survives best: hazard ratios are then above one, and mortality and load read in one direction. The mortality of each group is shown under the menu."))
+    fit_err <- if (!length(ch$problems) && !ch$no_ref) {
       errs <- Filter(function(r) inherits(r$fit, "error"), results())
       vapply(errs, function(r) sprintf("%s: the model could not be fitted (%s).", r$name, conditionMessage(r$fit)), "")
     } else character(0)
